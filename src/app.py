@@ -111,11 +111,176 @@ cur = con.cursor()
 def hello_world():
     return "<p>Hello, Sucky !</p>"
 
-@app.route("/shipments")
-def get_shipments():
-    cur.execute('SELECT l.label, s.start_time, s.end_time FROM shipment s JOIN location l ON l.id=s.location_id')
+# Location endpoints
+@app.route("/location/all")
+def get_all_locations():
+    cur.execute('SELECT * FROM location')
+    locations = cur.fetchall()
+    return jsonify(locations)
+
+@app.route("/location/<int:id>")
+def get_location(id):
+    cur.execute('SELECT * FROM location WHERE id = ?', (id,))
+    location = cur.fetchone()
+    if location:
+        return jsonify(location)
+    return jsonify({"error": "Location not found"}), 404
+
+# Shipment endpoints
+@app.route("/shipment/all")
+def get_all_shipments():
+    cur.execute('SELECT s.id, s.location_id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id')
     shipments = cur.fetchall()
     return jsonify(shipments)
+
+@app.route("/shipment/<int:id>")
+def get_shipment(id):
+    cur.execute('SELECT s.id, s.location_id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id WHERE s.id = ?', (id,))
+    shipment = cur.fetchone()
+    if shipment:
+        return jsonify(shipment)
+    return jsonify({"error": "Shipment not found"}), 404
+
+# Container endpoints
+@app.route("/container/all")
+def get_all_containers():
+    cur.execute('SELECT * FROM container')
+    containers = cur.fetchall()
+    return jsonify(containers)
+
+@app.route("/container/<string:id>")
+def get_container(id):
+    cur.execute('SELECT * FROM container WHERE id = ?', (id,))
+    container = cur.fetchone()
+    if container:
+        return jsonify(container)
+    return jsonify({"error": "Container not found"}), 404
+
+# Container meta data endpoints
+@app.route("/container_meta_data/all")
+def get_all_container_meta_data():
+    cur.execute('SELECT * FROM container_meta_data')
+    meta_data = cur.fetchall()
+    return jsonify(meta_data)
+
+@app.route("/container_meta_data/<int:id>")
+def get_container_meta_data(id):
+    cur.execute('SELECT * FROM container_meta_data WHERE id = ?', (id,))
+    meta_data = cur.fetchone()
+    if meta_data:
+        return jsonify(meta_data)
+    return jsonify({"error": "Container meta data not found"}), 404
+
+# Product endpoints
+@app.route("/product/all")
+def get_all_products():
+    cur.execute('SELECT * FROM product')
+    products = cur.fetchall()
+    return jsonify(products)
+
+@app.route("/product/<int:id>")
+def get_product(id):
+    cur.execute('SELECT * FROM product WHERE id = ?', (id,))
+    product = cur.fetchone()
+    if product:
+        return jsonify(product)
+    return jsonify({"error": "Product not found"}), 404
+
+# Client endpoints
+@app.route("/client/all")
+def get_all_clients():
+    cur.execute('SELECT * FROM client')
+    clients = cur.fetchall()
+    return jsonify(clients)
+
+@app.route("/client/<int:id>")
+def get_client(id):
+    cur.execute('SELECT * FROM client WHERE id = ?', (id,))
+    client = cur.fetchone()
+    if client:
+        return jsonify(client)
+    return jsonify({"error": "Client not found"}), 404
+
+# Client order endpoints
+@app.route("/client_order/all")
+def get_all_client_orders():
+    cur.execute('''
+        SELECT 
+            co.id,
+            co.container_id,
+            co.client_id,
+            c.name as client_name,
+            c.address as client_address,
+            co.product_id,
+            p.name as product_name,
+            p.price as product_price,
+            co.shipment_id,
+            s.location_id,
+            l.label as location_label,
+            l.lat as location_lat,
+            l.lon as location_lon,
+            l.alt as location_alt,
+            s.start_time,
+            s.end_time,
+            s.transport_type
+        FROM client_order co
+        JOIN client c ON co.client_id = c.id
+        JOIN product p ON co.product_id = p.id
+        JOIN shipment s ON co.shipment_id = s.id
+        JOIN location l ON s.location_id = l.id
+    ''')
+    orders = cur.fetchall()
+    return jsonify(orders)
+
+@app.route("/client_order/<int:id>")
+def get_client_order(id):
+    cur.execute('''
+        SELECT 
+            co.id,
+            co.container_id,
+            co.client_id,
+            c.name as client_name,
+            c.address as client_address,
+            co.product_id,
+            p.name as product_name,
+            p.price as product_price,
+            co.shipment_id,
+            s.location_id,
+            l.label as location_label,
+            l.lat as location_lat,
+            l.lon as location_lon,
+            l.alt as location_alt,
+            s.start_time,
+            s.end_time,
+            s.transport_type
+        FROM client_order co
+        JOIN client c ON co.client_id = c.id
+        JOIN product p ON co.product_id = p.id
+        JOIN shipment s ON co.shipment_id = s.id
+        JOIN location l ON s.location_id = l.id
+        WHERE co.id = ?
+    ''', (id,))
+    order = cur.fetchone()
+    if order:
+        return jsonify(order)
+    return jsonify({"error": "Client order not found"}), 404
+
+# Report endpoints
+@app.route("/report/all")
+def get_all_reports():
+    cur.execute('SELECT * FROM report')
+    reports = cur.fetchall()
+    return jsonify(reports)
+
+@app.route("/report/<int:id>")
+def get_report(id):
+    cur.execute('SELECT * FROM report WHERE id = ?', (id,))
+    report = cur.fetchone()
+    if report:
+        return jsonify(report)
+    return jsonify({"error": "Report not found"}), 404
+
+
 
 if __name__ == '__main__':
     # Change host to api.mod1.bit.gwep.dev for release/testing in release
