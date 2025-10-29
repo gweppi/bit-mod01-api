@@ -3,6 +3,7 @@ from flask_cors import CORS
 import sqlite3
 import os
 import random
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -131,14 +132,52 @@ def get_location(id):
 def get_all_shipments():
     cur.execute('SELECT s.id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id')
     shipments = cur.fetchall()
-    return jsonify(shipments)
+
+    formatted_shipments = []
+    current_time = int(datetime.now().timestamp())
+
+    for shipment in shipments:
+        start_date = datetime.fromtimestamp(shipment[5]).strftime('%d/%m/%Y')
+        end_date = datetime.fromtimestamp(shipment[6]).strftime('%d/%m/%Y')
+        days_until_arrival = max(0, (shipment[6] - current_time) // 86400)  # 86400 seconds in a day
+
+        formatted_shipments.append({
+            'id': shipment[0],
+            'label': shipment[1],
+            'lat': shipment[2],
+            'lon': shipment[3],
+            'alt': shipment[4],
+            'start_time': start_date,
+            'end_time': end_date,
+            'transport_type': shipment[7],
+            'days_until_arrival': int(days_until_arrival)
+        })
+
+    return jsonify(formatted_shipments)
 
 @app.route("/shipment/<int:id>")
 def get_shipment(id):
     cur.execute('SELECT s.id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id WHERE s.id = ?', (id,))
     shipment = cur.fetchone()
+
     if shipment:
-        return jsonify(shipment)
+        current_time = int(datetime.now().timestamp())
+        start_date = datetime.fromtimestamp(shipment[5]).strftime('%d/%m/%Y')
+        end_date = datetime.fromtimestamp(shipment[6]).strftime('%d/%m/%Y')
+        days_until_arrival = max(0, (shipment[6] - current_time) // 86400)  # 86400 seconds in a day
+
+        return jsonify({
+            'id': shipment[0],
+            'label': shipment[1],
+            'lat': shipment[2],
+            'lon': shipment[3],
+            'alt': shipment[4],
+            'start_time': start_date,
+            'end_time': end_date,
+            'transport_type': shipment[7],
+            'days_until_arrival': int(days_until_arrival)
+        })
+
     return jsonify({"error": "Shipment not found"}), 404
 
 # Container endpoints
