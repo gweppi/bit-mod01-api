@@ -129,13 +129,13 @@ def get_location(id):
 # Shipment endpoints
 @app.route("/shipment/all")
 def get_all_shipments():
-    cur.execute('SELECT s.id, s.location_id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id')
+    cur.execute('SELECT s.id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id')
     shipments = cur.fetchall()
     return jsonify(shipments)
 
 @app.route("/shipment/<int:id>")
 def get_shipment(id):
-    cur.execute('SELECT s.id, s.location_id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id WHERE s.id = ?', (id,))
+    cur.execute('SELECT s.id, l.label, l.lat, l.lon, l.alt, s.start_time, s.end_time, s.transport_type FROM shipment s JOIN location l ON s.location_id = l.id WHERE s.id = ?', (id,))
     shipment = cur.fetchone()
     if shipment:
         return jsonify(shipment)
@@ -144,13 +144,47 @@ def get_shipment(id):
 # Container endpoints
 @app.route("/container/all")
 def get_all_containers():
-    cur.execute('SELECT * FROM container')
+    cur.execute('''
+        SELECT 
+            c.id,
+            c.cycle_count,
+            l.label as location_label,
+            l.lat as location_lat,
+            l.lon as location_lon,
+            l.alt as location_alt,
+            cmd.length,
+            cmd.height,
+            cmd.width,
+            cmd.volume,
+            cmd.weight
+        FROM container c
+        JOIN location l ON c.location_id = l.id
+        JOIN container_meta_data cmd ON c.meta_data_id = cmd.id
+    ''')
     containers = cur.fetchall()
     return jsonify(containers)
 
+##fixme
 @app.route("/container/<string:id>")
 def get_container(id):
-    cur.execute('SELECT * FROM container WHERE id = ?', (id,))
+    cur.execute('''
+        SELECT 
+            c.id,
+            c.cycle_count,
+            l.label as location_label,
+            l.lat as location_lat,
+            l.lon as location_lon,
+            l.alt as location_alt,
+            cmd.length,
+            cmd.height,
+            cmd.width,
+            cmd.volume,
+            cmd.weight
+        FROM container c
+        JOIN location l ON c.location_id = l.id
+        JOIN container_meta_data cmd ON c.meta_data_id = cmd.id
+        WHERE c.id = ?
+    ''', (id,))
     container = cur.fetchone()
     if container:
         return jsonify(container)
@@ -208,14 +242,10 @@ def get_all_client_orders():
         SELECT 
             co.id,
             co.container_id,
-            co.client_id,
             c.name as client_name,
             c.address as client_address,
-            co.product_id,
             p.name as product_name,
             p.price as product_price,
-            co.shipment_id,
-            s.location_id,
             l.label as location_label,
             l.lat as location_lat,
             l.lon as location_lon,
@@ -238,14 +268,10 @@ def get_client_order(id):
         SELECT 
             co.id,
             co.container_id,
-            co.client_id,
             c.name as client_name,
             c.address as client_address,
-            co.product_id,
             p.name as product_name,
             p.price as product_price,
-            co.shipment_id,
-            s.location_id,
             l.label as location_label,
             l.lat as location_lat,
             l.lon as location_lon,
@@ -285,3 +311,4 @@ def get_report(id):
 if __name__ == '__main__':
     # Change host to api.mod1.bit.gwep.dev for release/testing in release
     app.run(host='0.0.0.0', port=5001, debug=False)
+
