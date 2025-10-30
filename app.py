@@ -163,6 +163,129 @@ def get_maintenance_by_id(maintenance_id):
         "maintenance_status": maintenance[3]
     }), 200
 
+@app.route("/maintenance/report", methods=['POST'])
+def create_maintenance_report():
+    data = request.get_json()
+
+    # Validate required fields
+    if not data or 'container_id' not in data:
+        return jsonify({"error": "container_id is required"}), 400
+
+    container_id = data.get('container_id')
+    maintenance_type = data.get('maintenance_type', 'deepclean')  # default to deepclean
+    report_type = data.get('report_type', 'MAINTENANCE')  # MAINTENANCE or INSPECTION
+    file_name = data.get('file_name', f'report_{container_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf')
+
+    # Check if container exists
+    cur.execute("SELECT id FROM container WHERE id=?", (container_id,))
+    container = cur.fetchone()
+    if not container:
+        return jsonify({"error": "Container not found"}), 404
+
+    # Create maintenance entry
+    cur.execute("""
+        INSERT INTO maintenance (container_id, maintenance_type, status)
+        VALUES (?, ?, ?)
+    """, (container_id, maintenance_type, 'maintenance_scheduled'))
+    maintenance_id = cur.lastrowid
+
+    # Create report entry
+    cur.execute("""
+        INSERT INTO report (maintenance_id, type, file_name)
+        VALUES (?, ?, ?)
+    """, (maintenance_id, report_type, file_name))
+    report_id = cur.lastrowid
+
+    con.commit()
+
+    return jsonify({
+        "message": "Maintenance report created successfully",
+        "maintenance_id": maintenance_id,
+        "report_id": report_id,
+        "container_id": container_id,
+        "file_name": file_name
+    }), 201
+
+@app.route("/shipments", methods=['POST'])
+def create_shipment():
+    data = request.get_json()
+
+    # Validate required fields
+    if not data:
+        return jsonify({"error": "Request body is required"}), 400
+
+    location_id = data.get('location_id')
+    transport_type = data.get('transport_type')
+    container_id = data.get('container_id')
+    product_id = data.get('product_id')
+    client_id = data.get('client_id')
+
+    if not all([location_id, transport_type, container_id, product_id, client_id]):
+        return jsonify({
+            "error": "Missing required fields",
+            "required": ["location_id", "transport_type", "container_id", "product_id", "client_id"]
+        }), 400
+
+    # Validate transport type
+    transport_type = transport_type.lower()
+    if transport_type not in ['sea', 'air', 'land']:
+        return jsonify({"error": "transport_type must be 'sea', 'air', or 'land'"}), 400
+
+    # Calculate dates and costs based on transport type
+    today = datetime.today()
+    start_time = int(today.timestamp())
+    end_time = None
+
+    if transport_type == 'land':
+        end_time = int((today + timedelta(days=5)).timestamp())
+    elif transport_type == 'sea':
+        end_time = int((today + timedelta(weeks=2)).timestamp())
+    elif transport_type == 'air':
+        end_time = int((today + timedelta(days=2)).timestamp())
+
+    # Check if referenced entities exist
+    cur.execute("SELECT id FROM location WHERE id=?", (location_id,))
+    if not cur.fetchone():
+        return jsonify({"error": "Location not found"}), 404
+
+    cur.execute("SELECT id FROM container WHERE id=?", (container_id,))
+    if not cur.fetchone():
+        return jsonify({"error": "Container not found"}), 404
+
+    cur.execute("SELECT id FROM product WHERE id=?", (product_id,))
+    if not cur.fetchone():
+        return jsonify({"error": "Product not found"}), 404
+
+    cur.execute("SELECT id FROM client WHERE id=?", (client_id,))
+    if not cur.fetchone():
+        return jsonify({"error": "Client not found"}), 404
+
+    # Create shipment
+    cur.execute("""
+        INSERT INTO shipment (location_id, start_time, end_time, transport_type, status)
+        VALUES (?, ?, ?, ?, ?)
+    """, (location_id, start_time, end_time, transport_type, 'Getting ready for shipment'))
+    shipment_id = cur.lastrowid
+
+    # Create client order
+    cur.execute("""
+        INSERT INTO client_order (container_id, product_id, shipment_id, client_id)
+        VALUES (?, ?, ?, ?)
+    """, (container_id, product_id, shipment_id, client_id))
+    order_id = cur.lastrowid
+
+    con.commit()
+
+    return jsonify({
+        "message": "Shipment created successfully",
+        "shipment_id": shipment_id,
+        "order_id": order_id,
+        "start_time": start_time,
+        "end_time": end_time,
+        "transport_type": transport_type,
+        "status": "Getting ready for shipment"
+    }), 201
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
