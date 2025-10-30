@@ -6,14 +6,11 @@ import waitress
 import argparse
 import seed
 import utils
-import locale
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", "--dev", help="Run in Development mode", type=bool, action=argparse.BooleanOptionalAction)
 
 seed.init_db()
-
-locale.setlocale(locale.LC_ALL, 'de_DE.UTF-8')
 
 con = sqlite3.connect('containers.db', check_same_thread=False)
 cur = con.cursor()
@@ -23,29 +20,6 @@ app = Flask(__name__)
 @app.route("/")
 def hello_world():
     return "<p>Hello, BIT!</p>"
-
-@app.route("/shipments/new")
-def new_shipment():
-    today = datetime.today()
-    shipment_type = request.args.get("type")
-    arrival = None
-    cost = None
-    if shipment_type == 'Land':
-        arrival = today + timedelta(days=5)
-        cost = 10_000 * 5
-    elif shipment_type == 'Sea':
-        arrival = today + timedelta(weeks=2)
-        cost = 1_000 * 14
-    elif shipment_type == 'Air':
-        arrival = today + timedelta(days=2)
-        cost = 100_000 * 2
-    return jsonify({
-        "depart_date": utils.ordinal(int(today.strftime("%d"))),
-        "depart_month": today.strftime("%B"),
-        "arrival_date": utils.ordinal(int(arrival.strftime("%d"))) if arrival else "??",
-        "arrival_month": arrival.strftime("%B") if arrival else "??",
-        "cost": locale.currency(cost, grouping=True) if cost else "??"
-    }), 200
 
 # Orders
 @app.route("/orders")
@@ -92,6 +66,29 @@ def get_order(order_id):
         'lat': order[5],
         'lon': order[6],
         'location_label': order[7]
+    }), 200
+
+@app.route("/orders/new")
+def new_order():
+    today = datetime.today()
+    shipment_type = request.args.get("type")
+    arrival = None
+    cost = None
+    if shipment_type == 'Land':
+        arrival = today + timedelta(days=5)
+        cost = 10_000 * 5
+    elif shipment_type == 'Sea':
+        arrival = today + timedelta(weeks=2)
+        cost = 1_000 * 14
+    elif shipment_type == 'Air':
+        arrival = today + timedelta(days=2)
+        cost = 100_000 * 2
+    return jsonify({
+        "depart_date": utils.ordinal(int(today.strftime("%d"))),
+        "depart_month": today.strftime("%B"),
+        "arrival_date": utils.ordinal(int(arrival.strftime("%d"))) if arrival else "??",
+        "arrival_month": arrival.strftime("%B") if arrival else "??",
+        "cost": "€ " + str(cost) if cost else "??"
     }), 200
 
 # Containers
