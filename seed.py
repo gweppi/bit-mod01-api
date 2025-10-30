@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import sqlite3
 import random
 import os
@@ -28,10 +29,10 @@ def init_db():
          'Getting ready for shipment'
       ]
       shipment_data = [
-         (1, 1, 1743590400, 1744704000, 'sea', random.choice(shipment_status_options)),
-         (2, 1, 1746384000, 1746998400, 'air', random.choice(shipment_status_options)),
-         (3, 2, 1749331200, 1750464000, 'land', random.choice(shipment_status_options)),
-         (4, 3, 1750646400, 1751376000, 'land', random.choice(shipment_status_options)),
+         (1, 1, 1743590400, datetime.now().timestamp() + timedelta(weeks=1).total_seconds(), 'sea', random.choice(shipment_status_options)),
+         (2, 1, 1746384000, datetime.now().timestamp() + timedelta(weeks=2).total_seconds(), 'air', random.choice(shipment_status_options)),
+         (3, 2, 1749331200, datetime.now().timestamp() + timedelta(weeks=3).total_seconds(), 'land', random.choice(shipment_status_options)),
+         (4, 3, 1750646400, datetime.now().timestamp() + timedelta(weeks=4).total_seconds(), 'land', random.choice(shipment_status_options)),
       ]
       cur.executemany('INSERT INTO shipment (id, location_id, start_time, end_time, transport_type, status) VALUES (?,?,?,?,?,?)', shipment_data)
       # Container meta data
