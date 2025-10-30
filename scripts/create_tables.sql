@@ -51,11 +51,16 @@ CREATE TABLE IF NOT EXISTS client_order (
    client_id integer REFERENCES client(id)
 );
 
-CREATE TABLE IF NOT EXISTS report (
+CREATE TABLE IF NOT EXISTS maintenance (
    id integer PRIMARY KEY,
    container_id text REFERENCES container(id),
+   maintenance_type text, -- either deep_clean OR outside_repairs
+   status text
+);
+
+CREATE TABLE IF NOT EXISTS report (
+   id integer PRIMARY KEY,
+   maintenance_id integer REFERENCES maintenance(id),
    type text, -- either MAINTENANCE or INSPECTION
-   status text,
-   cost integer, -- in cents
    file_name text -- the name of the file containing the actual report
 );

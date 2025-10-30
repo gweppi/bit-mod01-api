@@ -3,8 +3,10 @@ import sqlite3
 import random
 import os
 
-def init_db():
-   if not os.path.exists('containers.db'):
+def init_db(override: bool = False):
+   if not os.path.exists('containers.db') or override:
+      print("Initializing db...")
+      
       con = sqlite3.connect('containers.db')
       cur = con.cursor()
 
@@ -54,7 +56,7 @@ def init_db():
       container_data = [
          (
             'ASML ' + str(random.randint(10000, 99999)) + ' 4',
-            random.randint(1, 4),
+            random.randint(1, 3),
             random.randint(1, 6),
             random.randint(1, 20)
          )
@@ -87,7 +89,23 @@ def init_db():
          for i in range(1, 21)
       ]
       cur.executemany('INSERT INTO client_order (id, container_id, product_id, shipment_id, client_id) VALUES (?,?,?,?,?)', client_order_data)
+      # Maintenance
+      maintenance_data = [
+         (
+            i,
+            random.choice(container_data)[0],
+            random.choice(['outer_repair', 'deepclean']),
+            random.choice(['maintenance_scheduled', 'quality control', 'started maintenance', 'finished maintenance'])
+         )
+         for i in range(1,6)
+      ]
+      cur.executemany('INSERT INTO maintenance (id, container_id, maintenance_type, status) VALUES (?,?,?,?)', maintenance_data)
       # Close up connection
       con.commit()
       cur.close()
       con.close()
+
+      print('Done initialzing db')
+
+if __name__ == '__main__':
+   init_db(override=True)

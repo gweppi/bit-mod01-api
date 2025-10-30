@@ -94,6 +94,20 @@ def get_order(order_id):
         'location_label': order[7]
     }), 200
 
+# Containers
+@app.route("/containers")
+def get_containers():
+    cur.execute("""
+        SELECT c.id FROM container c
+    """)
+    containers = cur.fetchall()
+    formatted_containers = []
+    for container in containers:
+        formatted_containers.append({
+            'mainText': container[0]
+        })
+    return jsonify(formatted_containers), 200
+
 @app.route("/containers/locations")
 def get_container_locations():
     cur.execute("""
@@ -109,6 +123,45 @@ def get_container_locations():
             'lon': location[2]
         })
     return jsonify(formatted_locations), 200
+
+# Maintenance
+def formatted_maintenance_type(maintenance_type):
+    if maintenance_type == 'deepclean':
+        return 'Deep clean'
+    else:
+        return 'Outside repairs'
+
+@app.route("/maintenance")
+def get_maintenance():
+    cur.execute("""
+        SELECT m.id, c.id, m.maintenance_type, l.label FROM maintenance m
+        JOIN container c on c.id=m.container_id
+        JOIN location l on l.id=c.location_id
+    """)
+    maintenance = cur.fetchall()
+    formatted_maintenance = []
+    for maintenance_object in maintenance:
+        formatted_maintenance.append({
+            "mainText": maintenance_object[1] + ' - ' + formatted_maintenance_type(maintenance_object[2]),
+            "detailText": 'at ' + maintenance_object[3],
+            "link": maintenance_object[0]
+        })
+    return jsonify(formatted_maintenance), 200
+
+@app.route("/maintenance/<maintenance_id>")
+def get_maintenance_by_id(maintenance_id):
+    cur.execute(f"""
+        SELECT m.id, c.id, m.maintenance_type, m.status FROM maintenance m
+        JOIN container c ON c.id=m.container_id
+        WHERE m.id={maintenance_id}
+    """)
+    maintenance = cur.fetchone()
+    return jsonify({
+        "maintenance_id": maintenance[0],
+        "container_id": maintenance[1],
+        "maintenance_type": formatted_maintenance_type(maintenance[2]),
+        "maintenance_status": maintenance[3]
+    }), 200
 
 
 if __name__ == '__main__':
