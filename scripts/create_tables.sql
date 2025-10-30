@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS shipment (
    location_id integer REFERENCES location(id),
    start_time integer,
    end_time integer,
-   transport_type text -- either SEA, AIR, LAND
+   transport_type text, -- either SEA, AIR, LAND
+   status text
 );
 
 CREATE TABLE IF NOT EXISTS container (
