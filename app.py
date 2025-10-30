@@ -6,14 +6,11 @@ import waitress
 import argparse
 import seed
 import utils
-import locale
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", "--dev", help="Run in Development mode", type=bool, action=argparse.BooleanOptionalAction)
 
 seed.init_db()
-
-locale.setlocale(locale.LC_ALL, 'de_DE.UTF-8')
 
 con = sqlite3.connect('containers.db', check_same_thread=False)
 cur = con.cursor()
@@ -72,7 +69,7 @@ def get_order(order_id):
     }), 200
 
 @app.route("/orders/new")
-def new_shipment():
+def new_order():
     today = datetime.today()
     shipment_type = request.args.get("type")
     arrival = None
@@ -91,7 +88,7 @@ def new_shipment():
         "depart_month": today.strftime("%B"),
         "arrival_date": utils.ordinal(int(arrival.strftime("%d"))) if arrival else "??",
         "arrival_month": arrival.strftime("%B") if arrival else "??",
-        "cost": locale.currency(cost, grouping=True) if cost else "??"
+        "cost": "€ " + str(cost) if cost else "??"
     }), 200
 
 # Containers
