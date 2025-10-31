@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS maintenance (
    id integer PRIMARY KEY,
    container_id text REFERENCES container(id),
    maintenance_type text, -- either deep_clean OR outside_repairs
-   status text
+   status text,
+   photo_path text, -- path to uploaded photo file
+   pdf_path text -- path to uploaded PDF file
 );
 
 CREATE TABLE IF NOT EXISTS report (

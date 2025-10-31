@@ -6,6 +6,9 @@ import waitress
 import argparse
 import seed
 import utils
+import os
+from werkzeug.utils import secure_filename
+import uuid
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", "--dev", help="Run in Development mode", type=bool, action=argparse.BooleanOptionalAction)
@@ -16,6 +19,23 @@ con = sqlite3.connect('containers.db', check_same_thread=False)
 cur = con.cursor()
 
 app = Flask(__name__)
+
+# File upload configuration
+UPLOAD_FOLDER = '/app/storage'  # Docker storage path
+ALLOWED_PHOTO_EXTENSIONS = {'jpg', 'jpeg', 'png'}
+ALLOWED_PDF_EXTENSIONS = {'pdf'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Create upload directories if they don't exist
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'photos'), exist_ok=True)
+os.makedirs(os.path.join(UPLOAD_FOLDER, 'pdfs'), exist_ok=True)
+
+def allowed_photo_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PHOTO_EXTENSIONS
+
+def allowed_pdf_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PDF_EXTENSIONS
 
 @app.route("/")
 def hello_world():
@@ -148,7 +168,7 @@ def get_maintenance():
 @app.route("/maintenance/<maintenance_id>")
 def get_maintenance_by_id(maintenance_id):
     cur.execute(f"""
-        SELECT m.id, c.id, m.maintenance_type, m.status FROM maintenance m
+        SELECT m.id, c.id, m.maintenance_type, m.status, m.photo_path, m.pdf_path FROM maintenance m
         JOIN container c ON c.id=m.container_id
         WHERE m.id={maintenance_id}
     """)
@@ -157,7 +177,9 @@ def get_maintenance_by_id(maintenance_id):
         "maintenance_id": maintenance[0],
         "container_id": maintenance[1],
         "maintenance_type": formatted_maintenance_type(maintenance[2]),
-        "maintenance_status": maintenance[3]
+        "maintenance_status": maintenance[3],
+        "photo_path": maintenance[4],
+        "pdf_path": maintenance[5]
     }), 200
 
 @app.route("/maintenance/schedulenew", methods=['POST'])
@@ -205,6 +227,107 @@ def schedule_new_maintenance():
         "scheduled_date": date_str
     }), 201
 
+@app.route("/maintenance/<maintenance_id>/upload-photo", methods=['POST'])
+def upload_maintenance_photo(maintenance_id):
+    # Check if maintenance exists
+    cur.execute("SELECT id FROM maintenance WHERE id=?", (maintenance_id,))
+    maintenance = cur.fetchone()
+    if not maintenance:
+        return jsonify({"error": "Maintenance record not found"}), 404
+
+    # Check if file is present in request
+    if 'photo' not in request.files:
+        return jsonify({"error": "No photo file provided"}), 400
+
+    file = request.files['photo']
+
+    # Check if file is selected
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Validate file type
+    if not allowed_photo_file(file.filename):
+        return jsonify({"error": "Invalid file type. Allowed types: jpg, jpeg, png"}), 400
+
+    # Generate unique filename to avoid conflicts
+    filename = secure_filename(file.filename)
+    file_extension = filename.rsplit('.', 1)[1].lower()
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+
+    # Save file to storage
+    photo_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'photos')
+    file_path = os.path.join(photo_dir, unique_filename)
+    storage_path = f"/app/storage/photos/{unique_filename}"
+
+    try:
+        file.save(file_path)
+
+        # Update maintenance record with photo path
+        cur.execute("""
+            UPDATE maintenance SET photo_path = ? WHERE id = ?
+        """, (storage_path, maintenance_id))
+        con.commit()
+
+        return jsonify({
+            "message": "Photo uploaded successfully",
+            "maintenance_id": maintenance_id,
+            "photo_path": storage_path,
+            "filename": unique_filename
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to upload photo: {str(e)}"}), 500
+
+@app.route("/maintenance/<maintenance_id>/upload-pdf", methods=['POST'])
+def upload_maintenance_pdf(maintenance_id):
+    # Check if maintenance exists
+    cur.execute("SELECT id FROM maintenance WHERE id=?", (maintenance_id,))
+    maintenance = cur.fetchone()
+    if not maintenance:
+        return jsonify({"error": "Maintenance record not found"}), 404
+
+    # Check if file is present in request
+    if 'pdf' not in request.files:
+        return jsonify({"error": "No PDF file provided"}), 400
+
+    file = request.files['pdf']
+
+    # Check if file is selected
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Validate file type
+    if not allowed_pdf_file(file.filename):
+        return jsonify({"error": "Invalid file type. Only PDF files are allowed"}), 400
+
+    # Generate unique filename to avoid conflicts
+    filename = secure_filename(file.filename)
+    file_extension = filename.rsplit('.', 1)[1].lower()
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+
+    # Save file to storage
+    pdf_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'pdfs')
+    file_path = os.path.join(pdf_dir, unique_filename)
+    storage_path = f"/app/storage/pdfs/{unique_filename}"
+
+    try:
+        file.save(file_path)
+
+        # Update maintenance record with PDF path
+        cur.execute("""
+            UPDATE maintenance SET pdf_path = ? WHERE id = ?
+        """, (storage_path, maintenance_id))
+        con.commit()
+
+        return jsonify({
+            "message": "PDF uploaded successfully",
+            "maintenance_id": maintenance_id,
+            "pdf_path": storage_path,
+            "filename": unique_filename
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to upload PDF: {str(e)}"}), 500
 @app.route("/shipments", methods=['POST'])
 def create_shipment():
     data = request.get_json()
