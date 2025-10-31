@@ -160,18 +160,23 @@ def get_maintenance_by_id(maintenance_id):
         "maintenance_status": maintenance[3]
     }), 200
 
-@app.route("/maintenance/report", methods=['POST'])
-def create_maintenance_report():
+@app.route("/maintenance/schedulenew", methods=['POST'])
+def schedule_new_maintenance():
     data = request.get_json()
 
     # Validate required fields
-    if not data or 'container_id' not in data:
-        return jsonify({"error": "container_id is required"}), 400
+    if not data or 'container_id' not in data or 'maintenance_type' not in data or 'date' not in data:
+        return jsonify({"error": "container_id, maintenance_type, and date (dd/mm/yyyy) are required"}), 400
 
     container_id = data.get('container_id')
-    maintenance_type = data.get('maintenance_type', 'deepclean')  # default to deepclean
-    report_type = data.get('report_type', 'MAINTENANCE')  # MAINTENANCE or INSPECTION
-    file_name = data.get('file_name', f'report_{container_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf')
+    maintenance_type = data.get('maintenance_type')
+    date_str = data.get('date')
+
+    # Parse date in dd/mm/yyyy format
+    try:
+        maintenance_date = datetime.strptime(date_str, "%d/%m/%Y")
+    except ValueError:
+        return jsonify({"error": "Date must be in dd/mm/yyyy format"}), 400
 
     # Check if container exists
     cur.execute("SELECT id FROM container WHERE id=?", (container_id,))
@@ -179,28 +184,25 @@ def create_maintenance_report():
     if not container:
         return jsonify({"error": "Container not found"}), 404
 
+    # Validate maintenance_type
+    if maintenance_type.lower() not in ['deepclean', 'outside_repairs']:
+        return jsonify({"error": "maintenance_type must be 'deepclean' or 'outside_repairs'"}), 400
+
     # Create maintenance entry
     cur.execute("""
         INSERT INTO maintenance (container_id, maintenance_type, status)
         VALUES (?, ?, ?)
-    """, (container_id, maintenance_type, 'maintenance_scheduled'))
+    """, (container_id, maintenance_type.lower(), 'scheduled'))
     maintenance_id = cur.lastrowid
-
-    # Create report entry
-    cur.execute("""
-        INSERT INTO report (maintenance_id, type, file_name)
-        VALUES (?, ?, ?)
-    """, (maintenance_id, report_type, file_name))
-    report_id = cur.lastrowid
 
     con.commit()
 
     return jsonify({
-        "message": "Maintenance report created successfully",
+        "message": "Maintenance scheduled successfully",
         "maintenance_id": maintenance_id,
-        "report_id": report_id,
         "container_id": container_id,
-        "file_name": file_name
+        "maintenance_type": maintenance_type,
+        "scheduled_date": date_str
     }), 201
 
 @app.route("/shipments", methods=['POST'])
