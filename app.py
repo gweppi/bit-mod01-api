@@ -88,28 +88,93 @@ def get_order(order_id):
         'location_label': order[7]
     }), 200
 
-@app.route("/orders/new")
-def new_order():
+@app.route("/orders/new", methods=['POST'])
+def create_new_order():
+    import random
+
+    data = request.get_json()
+
+    # Validate required fields
+    if not data or 'transport_type' not in data:
+        return jsonify({"error": "transport_type is required (Land, Sea, or Air)"}), 400
+
+    transport_type = data.get('transport_type')
+
+    # Validate transport type
+    transport_type_lower = transport_type.lower()
+    if transport_type_lower not in ['land', 'sea', 'air']:
+        return jsonify({"error": "transport_type must be 'Land', 'Sea', or 'Air'"}), 400
+
+    # Get optional fields or use defaults
+    product_id = data.get('product_id', 1)  # Default to first product
+    client_id = data.get('client_id', 1)  # Default to first client
+
+    # Verify product and client exist
+    cur.execute("SELECT id FROM product WHERE id=?", (product_id,))
+    if not cur.fetchone():
+        return jsonify({"error": "Product not found"}), 404
+
+    cur.execute("SELECT id FROM client WHERE id=?", (client_id,))
+    if not cur.fetchone():
+        return jsonify({"error": "Client not found"}), 404
+
+    # Get all containers and randomly select one
+    cur.execute("SELECT id, location_id FROM container")
+    containers = cur.fetchall()
+
+    if not containers:
+        return jsonify({"error": "No containers available"}), 404
+
+    selected_container = random.choice(containers)
+    container_id = selected_container[0]
+    location_id = selected_container[1]
+
+    # Calculate dates and costs based on transport type
     today = datetime.today()
-    shipment_type = request.args.get("type")
-    arrival = None
+    start_time = int(today.timestamp())
+    end_time = None
     cost = None
-    if shipment_type == 'Land':
-        arrival = today + timedelta(days=5)
+
+    if transport_type_lower == 'land':
+        end_time = int((today + timedelta(days=5)).timestamp())
         cost = 10_000 * 5
-    elif shipment_type == 'Sea':
-        arrival = today + timedelta(weeks=2)
+    elif transport_type_lower == 'sea':
+        end_time = int((today + timedelta(weeks=2)).timestamp())
         cost = 1_000 * 14
-    elif shipment_type == 'Air':
-        arrival = today + timedelta(days=2)
+    elif transport_type_lower == 'air':
+        end_time = int((today + timedelta(days=2)).timestamp())
         cost = 100_000 * 2
+
+    # Create shipment
+    cur.execute("""
+        INSERT INTO shipment (location_id, start_time, end_time, transport_type, status)
+        VALUES (?, ?, ?, ?, ?)
+    """, (location_id, start_time, end_time, transport_type_lower, 'Getting ready for shipment'))
+    shipment_id = cur.lastrowid
+
+    # Create client order
+    cur.execute("""
+        INSERT INTO client_order (container_id, product_id, shipment_id, client_id)
+        VALUES (?, ?, ?, ?)
+    """, (container_id, product_id, shipment_id, client_id))
+    order_id = cur.lastrowid
+
+    con.commit()
+
     return jsonify({
-        "depart_date": utils.ordinal(int(today.strftime("%d"))),
-        "depart_month": today.strftime("%B"),
-        "arrival_date": utils.ordinal(int(arrival.strftime("%d"))) if arrival else "??",
-        "arrival_month": arrival.strftime("%B") if arrival else "??",
-        "cost": "€ " + str(cost) if cost else "??"
-    }), 200
+        "message": "Order created successfully",
+        "order_id": order_id,
+        "shipment_id": shipment_id,
+        "container_id": container_id,
+        "location_id": location_id,
+        "product_id": product_id,
+        "client_id": client_id,
+        "transport_type": transport_type_lower,
+        "start_time": start_time,
+        "end_time": end_time,
+        "cost": f"€ {cost}",
+        "status": "Getting ready for shipment"
+    }), 201
 
 # Containers
 @app.route("/containers")
