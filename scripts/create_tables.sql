@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS container_meta_data ( -- All sizes in m, volume in m^
    height real,
    width real,
    volume real,
-   weight real
+   weight real,
+   status text DEFAULT 'Functional'
 );
 
 CREATE TABLE IF NOT EXISTS product (

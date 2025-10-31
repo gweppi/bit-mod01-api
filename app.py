@@ -180,13 +180,15 @@ def create_new_order():
 @app.route("/containers")
 def get_containers():
     cur.execute("""
-        SELECT c.id FROM container c
+        SELECT c.id, cmd.status FROM container c
+        JOIN container_meta_data cmd ON cmd.id=c.meta_data_id
     """)
     containers = cur.fetchall()
     formatted_containers = []
     for container in containers:
         formatted_containers.append({
-            'mainText': container[0]
+            'container_id': container[0],
+            'status': container[1]
         })
     return jsonify(formatted_containers), 200
 
@@ -205,6 +207,28 @@ def get_container_locations():
             'lon': location[2]
         })
     return jsonify(formatted_locations), 200
+
+@app.route("/container/<container_id>/scrap", methods=['POST'])
+def scrap_container(container_id):
+    # Check if container exists
+    cur.execute("SELECT meta_data_id FROM container WHERE id=?", (container_id,))
+    container = cur.fetchone()
+    if not container:
+        return jsonify({"error": "Container not found"}), 404
+
+    meta_data_id = container[0]
+
+    # Update the status to 'Scrap' in container_meta_data
+    cur.execute("""
+        UPDATE container_meta_data SET status = ? WHERE id = ?
+    """, ('Scrap', meta_data_id))
+    con.commit()
+
+    return jsonify({
+        "message": "Container marked for scrap successfully",
+        "container_id": container_id,
+        "status": "Scrap"
+    }), 200
 
 # Maintenance
 def formatted_maintenance_type(maintenance_type):
