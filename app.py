@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from datetime import datetime, timedelta
 import sqlite3
 import humanize
@@ -91,50 +91,50 @@ def get_order(order_id):
 @app.route("/orders/new", methods=['POST'])
 def create_new_order():
     import random
-
+    
     data = request.get_json()
-
+    
     # Validate required fields
     if not data or 'transport_type' not in data:
         return jsonify({"error": "transport_type is required (Land, Sea, or Air)"}), 400
-
+    
     transport_type = data.get('transport_type')
-
+    
     # Validate transport type
     transport_type_lower = transport_type.lower()
     if transport_type_lower not in ['land', 'sea', 'air']:
         return jsonify({"error": "transport_type must be 'Land', 'Sea', or 'Air'"}), 400
-
+    
     # Get optional fields or use defaults
     product_id = data.get('product_id', 1)  # Default to first product
     client_id = data.get('client_id', 1)  # Default to first client
-
+    
     # Verify product and client exist
     cur.execute("SELECT id FROM product WHERE id=?", (product_id,))
     if not cur.fetchone():
         return jsonify({"error": "Product not found"}), 404
-
+    
     cur.execute("SELECT id FROM client WHERE id=?", (client_id,))
     if not cur.fetchone():
         return jsonify({"error": "Client not found"}), 404
-
+    
     # Get all containers and randomly select one
     cur.execute("SELECT id, location_id FROM container")
     containers = cur.fetchall()
-
+    
     if not containers:
         return jsonify({"error": "No containers available"}), 404
-
+    
     selected_container = random.choice(containers)
     container_id = selected_container[0]
     location_id = selected_container[1]
-
+    
     # Calculate dates and costs based on transport type
     today = datetime.today()
     start_time = int(today.timestamp())
     end_time = None
     cost = None
-
+    
     if transport_type_lower == 'land':
         end_time = int((today + timedelta(days=5)).timestamp())
         cost = 10_000 * 5
@@ -144,23 +144,23 @@ def create_new_order():
     elif transport_type_lower == 'air':
         end_time = int((today + timedelta(days=2)).timestamp())
         cost = 100_000 * 2
-
+    
     # Create shipment
     cur.execute("""
         INSERT INTO shipment (location_id, start_time, end_time, transport_type, status)
         VALUES (?, ?, ?, ?, ?)
     """, (location_id, start_time, end_time, transport_type_lower, 'Getting ready for shipment'))
     shipment_id = cur.lastrowid
-
+    
     # Create client order
     cur.execute("""
         INSERT INTO client_order (container_id, product_id, shipment_id, client_id)
         VALUES (?, ?, ?, ?)
     """, (container_id, product_id, shipment_id, client_id))
     order_id = cur.lastrowid
-
+    
     con.commit()
-
+    
     return jsonify({
         "message": "Order created successfully",
         "order_id": order_id,
@@ -473,6 +473,29 @@ def create_shipment():
         "status": "Getting ready for shipment"
     }), 201
 
+@app.route('/maintenance/<maintenance_id>/download-photo', methods=['GET'])
+def download_maintenance_photo(maintenance_id):
+    # Check if maintenance exists
+    cur.execute("SELECT id, photo_path FROM maintenance WHERE id=?", (maintenance_id,))
+    maintenance = cur.fetchone()
+    if not maintenance:
+        return jsonify({"error": "Maintenance record not found"}), 404
+
+    photo_path = maintenance[1]
+
+    return send_file(photo_path, as_attachment=True)
+
+@app.route('/maintenance/<maintenance_id>/download-pdf', methods=['GET'])
+def download_maintenance_pdf(maintenance_id):
+    # Check if maintenance exists
+    cur.execute("SELECT id, pdf_path FROM maintenance WHERE id=?", (maintenance_id,))
+    maintenance = cur.fetchone()
+    if not maintenance:
+        return jsonify({"error": "Maintenance record not found"}), 404
+
+    pdf_path = maintenance[1]
+
+    return send_file(pdf_path, as_attachment=True)
 
 if __name__ == '__main__':
     args = parser.parse_args()
