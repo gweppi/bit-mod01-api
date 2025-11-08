@@ -42,6 +42,20 @@ def hello_world():
     return "<p>Hello, BIT!</p>"
 
 # Orders
+def calculate_shipment_values(date, shipment_type):
+    arrival: datetime | None = datetime.today()
+    cost = None
+    if shipment_type == 'Land':
+        arrival = date + timedelta(days=5)
+        cost = 10_000 * 5
+    elif shipment_type == 'Sea':
+        arrival = date + timedelta(weeks=2)
+        cost = 1_000 * 14
+    elif shipment_type == 'Air':
+        arrival = date + timedelta(days=2)
+        cost = 100_000 * 2
+    return arrival, cost
+
 @app.route("/orders")
 def get_orders():
     cur.execute("""
@@ -55,10 +69,33 @@ def get_orders():
     for order in orders:
         formatted_orders.append({
             'mainText': f'Container {order[1]}',
-            'detailText': f'Arrives in {humanize.naturaltime(order[2] / 1000, future=True)} from {order[3]}',
+            'detailText': f'Arrives in {humanize.naturaltime(int(order[2]) / 1000, future=True)} from {order[3]}',
             'link': order[0]
         })
     return jsonify(formatted_orders), 200
+
+@app.route("/orders", methods=['POST'])
+def create_order():
+    data = request.get_json()
+    shipping_method = data['shipping_method']
+    selected_container_id = data['container_id']
+
+    if not shipping_method or not selected_container_id:
+        return jsonify({"error": "not all required data provided"}), 401
+
+    # Add shipment to DB
+    cur.execute('SELECT c.location_id FROM container c WHERE c.id=?', (selected_container_id,))
+    location_id = cur.fetchone()
+
+    today = datetime.today()
+    arrival, cost = calculate_shipment_values(today, shipping_method)
+    cur.execute('INSERT INTO shipment (location_id, start_time, end_time, transport_type, status) VALUES (?,?,?,?,?)', (location_id[0], today.timestamp(), arrival.timestamp(), shipping_method, "Container has been marked for retour",))
+    con.commit()
+
+    # Add order to DB
+    cur.execute('INSERT INTO client_order (container_id, product_id, shipment_id, client_id) VALUES (?,?,?,?)', (selected_container_id, 1, cur.lastrowid, 1))
+    con.commit()
+    return "", 201
 
 @app.route("/orders/<order_id>")
 def get_order(order_id):
@@ -70,13 +107,13 @@ def get_order(order_id):
         else:
             return 'Transporting over land.'
 
-    cur.execute(f"""
+    cur.execute("""
         SELECT o.id, c.id, s.end_time, s.transport_type, s.status, l.lat, l.lon, l.label FROM client_order o
         JOIN shipment s ON s.id=o.shipment_id
         JOIN container c ON c.id=o.container_id
         JOIN location l ON l.id=s.location_id
-        WHERE o.id={order_id}
-    """)
+        WHERE o.id=?
+    """, order_id)
     order = cur.fetchone()
     return jsonify({
         'container_id': order[1],
@@ -256,11 +293,11 @@ def get_maintenance():
 
 @app.route("/maintenance/<maintenance_id>")
 def get_maintenance_by_id(maintenance_id):
-    cur.execute(f"""
+    cur.execute("""
         SELECT m.id, c.id, m.maintenance_type, m.status, m.photo_path, m.pdf_path FROM maintenance m
         JOIN container c ON c.id=m.container_id
-        WHERE m.id={maintenance_id}
-    """)
+        WHERE m.id=?
+    """, maintenance_id)
     maintenance = cur.fetchone()
     return jsonify({
         "maintenance_id": maintenance[0],
@@ -520,6 +557,25 @@ def download_maintenance_pdf(maintenance_id):
     pdf_path = maintenance[1]
 
     return send_file(pdf_path, as_attachment=True)
+@app.route("/maintenance/files")
+def get_maintenance_files():
+    return jsonify([
+        {
+            'mainText': "Report about the container",
+            "detailText": "Report",
+            "imageName": "document.png"
+        },
+        {
+            'mainText': "Image showing damage",
+            "detailText": "Image",
+            "imageName": "image.png"
+        }
+    ]), 200
+
+@app.route("/maintenance/new", methods=['POST'])
+def new_maintenance():
+    print(request.get_json())
+    return "", 201
 
 if __name__ == '__main__':
     args = parser.parse_args()
