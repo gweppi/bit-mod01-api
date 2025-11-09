@@ -5,7 +5,6 @@ import argparse
 import os
 
 import waitress
-from werkzeug.utils import secure_filename
 
 import seed # Seeds the database
 import utils # Includes several utility functions
@@ -21,13 +20,8 @@ cur = con.cursor()
 app = Flask(__name__)
 
 # File upload configuration
-UPLOAD_FOLDER = '/app/storage'  # Docker storage path
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['UPLOAD_FOLDER'] = "./files"
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
-# Create upload directories if they don't exist
-os.makedirs(os.path.join(UPLOAD_FOLDER, 'photos'), exist_ok=True)
-os.makedirs(os.path.join(UPLOAD_FOLDER, 'pdfs'), exist_ok=True)
 
 @app.route("/")
 def hello_world():
@@ -155,7 +149,6 @@ def get_container_locations():
         })
     return jsonify(formatted_locations), 200
 
-# TODO: Implement endpoint that allows for container scrap (POST to container/scrap with container_id in body)
 @app.route("/containers/<container_id>", methods=["DELETE"])
 def scrap_container(container_id: str):
     cur.execute("""
@@ -237,7 +230,7 @@ def schedule_new_maintenance():
 @app.route("/maintenance/<maintenance_id>")
 def get_maintenance_by_id(maintenance_id):
     cur.execute("""
-        SELECT m.id, c.id, m.maintenance_type, m.status, m.photo_path, m.pdf_path FROM maintenance m
+        SELECT m.id, c.id, m.maintenance_type, m.status FROM maintenance m
         JOIN container c ON c.id=m.container_id
         WHERE m.id=?
     """, (int(maintenance_id),))
@@ -246,36 +239,50 @@ def get_maintenance_by_id(maintenance_id):
         "maintenance_id": maintenance[0],
         "container_id": maintenance[1],
         "maintenance_type": utils.formatted_maintenance_type(maintenance[2]),
-        "maintenance_status": maintenance[3],
-        "photo_path": maintenance[4],
-        "pdf_path": maintenance[5]
+        "maintenance_status": maintenance[3]
     }), 200
 
 # Returns all files associated with a maintenance_id to the client
 @app.route("/maintenance/<maintenance_id>/files")
 def get_maintenance_files(maintenance_id: int):
-    return jsonify([
-        {
-            'mainText': "Report about the container",
-            "detailText": "Report",
-            "imageName": "document.png"
-        },
-        {
-            'mainText': "Image showing damage",
-            "detailText": "Image",
-            "imageName": "image.png"
-        }
-    ]), 200
+    cur.execute("""
+        SELECT file_name, file_type FROM report_file
+        WHERE maintenance_id=?                
+    """, (int(maintenance_id),))
+    files = cur.fetchmany()
+    
+    formatted_files = [{
+        'mainText': 'Image evidence' if file[1] == 'image' else 'Maintenance report',
+        'detailText': 'filename: ' + file[0],
+        'imageName': utils.get_client_file_asset_name(file[1])
+    } for file in files]
 
-# TODO: Implement uploading of images and store them on the server.
-@app.route("/maintenance/<maintenance_id>/image", methods=["POST"])
+    return jsonify(formatted_files), 200
+
+# Allows client to upload a file to the server associated with maintenance. Can either be a report (pdf) or image (png, jpg etc.)
+@app.route("/maintenance/<maintenance_id>/files", methods=["POST"])
 def upload_maintenance_image(maintenance_id: int):
-    return "", 500
+    print(len(request.files))
+    if not "file" in request.files.keys(): return jsonify({"error": "The request did not include a file upload named 'file'. Please try again."}), 400
+    file = request.files['file']
+    if file.filename is None:
+        return jsonify({"error": "No file was provided. Please upload a file to save it."}), 400
+    if file.content_length > app.config["MAX_CONTENT_LENGTH"]:
+        return jsonify({"error": "The provided file was too big. Please upload a file smaller than 16Mb."}), 400
+    
+    _, file_extension = os.path.splitext(file.filename)
+    if file_extension == "": return jsonify({"error": "The provided file did not include an extension. Please rename the file wih an extension"}), 400
+    file_type = utils.get_file_type(file_extension)
+    if file_type == None: return jsonify({"error": "Uploaded file type is not supported."}), 400
+    generated_file_name = utils.generate_file_name(maintenance_id) + file_extension
 
-# TODO: Implement uploading of pdf files and store them on the server.
-@app.route("/maintenance/<maintenance_id>/file", methods=["POST"])
-def upload_maintenance_file(maintenance_id: int):
-    return "", 500
+    file.save(os.path.join(app.config["UPLOAD_FOLDER"], generated_file_name))
+    
+    cur.execute("""
+        INSERT INTO report_file (maintenance_id, type, file_type, file_name) VALUES (?,?,?,?)
+    """, (maintenance_id, 'maintenance', file_type, generated_file_name))
+    con.commit()
+    return "", 201
 
 
 if __name__ == '__main__':

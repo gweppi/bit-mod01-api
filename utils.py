@@ -1,21 +1,12 @@
 from datetime import datetime, timedelta
 import humanize
 
-ALLOWED_PHOTO_EXTENSIONS = {'jpg', 'jpeg', 'png'}
-ALLOWED_PDF_EXTENSIONS = {'pdf'}
-
 def ordinal(n: int) -> str:
     if 10 <= n % 100 <= 20:
         suffix = "th"
     else:
         suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
     return f"{n}{suffix}"
-
-def allowed_photo_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PHOTO_EXTENSIONS
-
-def allowed_pdf_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PDF_EXTENSIONS
 
 def calculate_shipment_cost_and_arrival(date, shipment_type):
     arrival: datetime | None = datetime.today()
@@ -48,3 +39,24 @@ def formatted_maintenance_type(maintenance_type):
         return 'Deep clean'
     else:
         return 'Outside repairs'
+    
+ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
+ALLOWED_REPORT_EXTENSIONS = {'.pdf'}
+    
+def generate_file_name(maintenance_id: int):
+    date = datetime.now().strftime("%d%m%y%H%M%S")
+    return "f-" + str(maintenance_id) + "-" + date
+
+def get_file_type(file_extension: str):
+    if file_extension in ALLOWED_IMAGE_EXTENSIONS:
+        return 'image'
+    
+    if file_extension in ALLOWED_REPORT_EXTENSIONS:
+        return 'report'
+    
+    return None
+
+def get_client_file_asset_name(file_type: str):
+    if file_type == "image":
+        return "image.png"
+    return "document.png"
