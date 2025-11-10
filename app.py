@@ -68,11 +68,23 @@ def create_order():
     if not request.is_json: return jsonify({"error": "Provided data is not in JSON format or mimetype is not set to application/json."}), 400
 
     data = request.get_json()
+
+    if not 'shipping_method' in data or not 'container_id' in data:
+        return jsonify({"error": "not all required data provided, shipping_method and container_id are required."}), 400
+
     shipping_method = data['shipping_method']
     selected_container_id = data['container_id']
 
-    if not shipping_method or not selected_container_id:
-        return jsonify({"error": "not all required data provided, shipping_method and container_id are required."}), 400
+    if shipping_method not in {"sea", "land", "air"}:
+        return jsonify({"error": "The provided shipping method is not valid. Please pick from land, air or sea."}), 400
+
+    # Check if container is in DB
+    cur.execute("""
+        SELECT c.id FROM container c
+        WHERE c.id=?
+    """, (selected_container_id,))
+    container = cur.fetchone()
+    if container is None: return jsonify({"error": "The provided container_id is not present in the database."}), 400
 
     # Add shipment to DB
     # First fetch location of current container
@@ -101,7 +113,7 @@ def get_order(order_id):
         JOIN container c ON c.id=o.container_id
         JOIN location l ON l.id=s.location_id
         WHERE o.id=?
-    """, (int(order_id),))
+    """, (order_id,))
     order = cur.fetchone()
     if order is None: return jsonify({"error": "There was no order found with that id."}), 404
 
@@ -152,7 +164,8 @@ def get_container_locations():
 @app.route("/containers/<container_id>", methods=["DELETE"])
 def scrap_container(container_id: str):
     cur.execute("""
-        DELETE FROM containers c WHERE c.id=?
+        DELETE FROM container
+        WHERE container.id=?
     """, (container_id,))
     # Check if any rows are affected, if not, return 404 container not found.
     if cur.rowcount == 0: return jsonify({"error": "The container you are trying to scrap was not found."})
@@ -195,9 +208,9 @@ def schedule_new_maintenance():
     # NOT IMPLEMENTED IN DB, maintenance date is not stored
     # Parse date in dd/mm/yyyy format
     # try:
-    #     maintenance_date = datetime.strptime(date_str, "%d/%m/%Y")
+    #     maintenance_date = datetime.strptime(date_str, "%d-%m-%Y")
     # except ValueError:
-    #     return jsonify({"error": "Date must be in dd/mm/yyyy format"}), 400
+    #     return jsonify({"error": "Date must be in dd-mm-yyyy format"}), 400
 
     # Check if container exists
     cur.execute("SELECT id FROM container WHERE id=?", (container_id,))
@@ -233,8 +246,10 @@ def get_maintenance_by_id(maintenance_id):
         SELECT m.id, c.id, m.maintenance_type, m.status FROM maintenance m
         JOIN container c ON c.id=m.container_id
         WHERE m.id=?
-    """, (int(maintenance_id),))
+    """, (maintenance_id,))
     maintenance = cur.fetchone()
+    if maintenance is None: return jsonify({"error": "No maintenance was found with the specified id."}), 400
+
     return jsonify({
         "maintenance_id": maintenance[0],
         "container_id": maintenance[1],
@@ -248,7 +263,7 @@ def get_maintenance_files(maintenance_id: int):
     cur.execute("""
         SELECT file_name, file_type FROM report_file
         WHERE maintenance_id=?                
-    """, (int(maintenance_id),))
+    """, (maintenance_id,))
     files = cur.fetchmany()
     
     formatted_files = [{
