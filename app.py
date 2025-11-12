@@ -14,8 +14,12 @@ parser.add_argument("-d", "--dev", help="Run in Development mode", type=bool, ac
 
 seed.init_db()
 
-con = sqlite3.connect('containers.db', check_same_thread=False)
-cur = con.cursor()
+def get_db_objects():
+    con = sqlite3.connect('containers.db')
+    return con, con.cursor()
+
+# con = sqlite3.connect('containers.db')
+# cur = con.cursor()
 
 app = Flask(__name__)
 
@@ -40,13 +44,14 @@ def login():
     if username == "manager" and password == "manager123":
         return "", 200
     return jsonify({
-        "error": "username or password or combination is not correct. Correct username and password are provided in the user manual."
+        "error": "Username or password or combination is not correct. Correct username and password are provided in the user manual."
     }), 401
 
 # Orders
 # Returns all orders in the DB to the client.
 @app.route("/orders")
 def get_orders():
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT o.id, c.id, s.end_time, l.label FROM client_order o
         JOIN shipment s ON s.id=o.shipment_id
@@ -65,6 +70,7 @@ def get_orders():
 # Client should provide container_id and shipping_method
 @app.route("/orders", methods=['POST'])
 def create_order():
+    con, cur = get_db_objects()
     if not request.is_json: return jsonify({"error": "Provided data is not in JSON format or mimetype is not set to application/json."}), 400
 
     data = request.get_json()
@@ -104,9 +110,29 @@ def create_order():
 
     return "", 201
 
+# Returns calculated price for shipment
+@app.route("/orders/price")
+def get_price():
+    shipment_type = request.args.get('type')
+    if shipment_type is None: return jsonify({"error": "No shipment type specified."}), 400
+
+    if shipment_type not in utils.ALLOWED_SHIPMENT_TYPES: return jsonify({"error": "Invalid shipment type, please choose from land, air or sea."}), 400
+
+    today = datetime.today()
+    arrival, cost = utils.calculate_shipment_cost_and_arrival(today, shipment_type)
+
+    return jsonify({
+        "price": cost,
+        "current_date": utils.ordinal(today.day),
+        "current_month": today.strftime("%B"),
+        "arrival_date": utils.ordinal(arrival.day),
+        "arrival_month": arrival.strftime("%B")
+    }), 200
+
 # Returns specific order and details about it to the client.
 @app.route("/orders/<order_id>")
 def get_order(order_id):
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT o.id, c.id, s.end_time, s.transport_type, s.status, l.lat, l.lon, l.label FROM client_order o
         JOIN shipment s ON s.id=o.shipment_id
@@ -131,6 +157,7 @@ def get_order(order_id):
 # Returns a list of all containers in the DB to the client.
 @app.route("/containers")
 def get_containers():
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT c.id, cmd.status FROM container c
         JOIN container_meta_data cmd ON cmd.id=c.meta_data_id
@@ -147,6 +174,7 @@ def get_containers():
 # Returns a list of all containers and their locations to the client.
 @app.route("/containers/locations")
 def get_container_locations():
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT c.id, l.lat, l.lon FROM container c
         JOIN location l ON l.id=c.location_id
@@ -163,6 +191,7 @@ def get_container_locations():
 
 @app.route("/containers/<container_id>", methods=["DELETE"])
 def scrap_container(container_id: str):
+    con, cur = get_db_objects()
     cur.execute("""
         DELETE FROM container
         WHERE container.id=?
@@ -170,12 +199,13 @@ def scrap_container(container_id: str):
     # Check if any rows are affected, if not, return 404 container not found.
     if cur.rowcount == 0: return jsonify({"error": "The container you are trying to scrap was not found."})
     con.commit()
-    return "", 200
+    return "", 204
 
 # Maintenance
 # Returns a list of all maintenance actions currently going on or planned to the client.
 @app.route("/maintenance")
 def get_maintenance():
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT m.id, c.id, m.maintenance_type, l.label FROM maintenance m
         JOIN container c on c.id=m.container_id
@@ -194,6 +224,7 @@ def get_maintenance():
 # Schedules new maintence, client provides container_id maintenance_type and date in request body.
 @app.route("/maintenance", methods=['POST'])
 def schedule_new_maintenance():
+    con, cur = get_db_objects()
     if not request.is_json: return jsonify({"error": "Provided body is not in JSON form or mimetype is not set to application/json"}), 400
     data = request.get_json()
 
@@ -216,11 +247,11 @@ def schedule_new_maintenance():
     cur.execute("SELECT id FROM container WHERE id=?", (container_id,))
     container = cur.fetchone()
     if not container:
-        return jsonify({"error": "Container not found"}), 404
+        return jsonify({"error": "Container with specified ID not found. Please select a container from the list."}), 404
 
     # Validate maintenance_type
     if maintenance_type.lower() not in ['deepclean', 'outside_repairs']:
-        return jsonify({"error": "maintenance_type must be 'deepclean' or 'outside_repairs'"}), 400
+        return jsonify({"error": "Maintenance Type must be 'Deepclean' or 'Outside repairs'. Please select one from the list"}), 400
 
     # Create maintenance entry
     cur.execute("""
@@ -242,6 +273,7 @@ def schedule_new_maintenance():
 # Returns specific maintenence and its details to the client.
 @app.route("/maintenance/<maintenance_id>")
 def get_maintenance_by_id(maintenance_id):
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT m.id, c.id, m.maintenance_type, m.status FROM maintenance m
         JOIN container c ON c.id=m.container_id
@@ -260,6 +292,7 @@ def get_maintenance_by_id(maintenance_id):
 # Returns all files associated with a maintenance_id to the client
 @app.route("/maintenance/<maintenance_id>/files")
 def get_maintenance_files(maintenance_id: int):
+    _, cur = get_db_objects()
     cur.execute("""
         SELECT file_name, file_type FROM report_file
         WHERE maintenance_id=?                
@@ -277,21 +310,21 @@ def get_maintenance_files(maintenance_id: int):
 # Allows client to upload a file to the server associated with maintenance. Can either be a report (pdf) or image (png, jpg etc.)
 @app.route("/maintenance/<maintenance_id>/files", methods=["POST"])
 def upload_maintenance_image(maintenance_id: int):
-    print(len(request.files))
-    if not "file" in request.files.keys(): return jsonify({"error": "The request did not include a file upload named 'file'. Please try again."}), 400
-    file = request.files['file']
-    if file.filename is None:
-        return jsonify({"error": "No file was provided. Please upload a file to save it."}), 400
-    if file.content_length > app.config["MAX_CONTENT_LENGTH"]:
-        return jsonify({"error": "The provided file was too big. Please upload a file smaller than 16Mb."}), 400
+    con, cur = get_db_objects()
     
-    _, file_extension = os.path.splitext(file.filename)
-    if file_extension == "": return jsonify({"error": "The provided file did not include an extension. Please rename the file wih an extension"}), 400
-    file_type = utils.get_file_type(file_extension)
-    if file_type == None: return jsonify({"error": "Uploaded file type is not supported."}), 400
-    generated_file_name = utils.generate_file_name(maintenance_id) + file_extension
+    file = request.data
 
-    file.save(os.path.join(app.config["UPLOAD_FOLDER"], generated_file_name))
+    file_extension = request.headers['Content-Type'].split('/')[-1]
+    file_type = utils.get_file_type(file_extension)
+    if file_type is None: return jsonify({"error": "Uploaded file not supported because of extension. jpg/jpeg, png and pdf are supported."}), 400
+
+    file_length = len(file)
+    if file_length > app.config['MAX_CONTENT_LENGTH']: return jsonify({"error": "The provided file was too big. Please upload a file smaller than 16Mb."}), 400
+
+    file_name = utils.generate_file_name(maintenance_id)
+    generated_file_name = file_name + "." + file_extension
+    with open(os.path.join(app.config["UPLOAD_FOLDER"], generated_file_name), "wb") as f:
+        f.write(file)
     
     cur.execute("""
         INSERT INTO report_file (maintenance_id, type, file_type, file_name) VALUES (?,?,?,?)

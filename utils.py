@@ -1,6 +1,11 @@
 from datetime import datetime, timedelta
 import humanize
 
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png'}
+ALLOWED_REPORT_EXTENSIONS = {'pdf'}
+
+ALLOWED_SHIPMENT_TYPES = {'air', 'land', 'sea'}
+
 def ordinal(n: int) -> str:
     if 10 <= n % 100 <= 20:
         suffix = "th"
@@ -9,15 +14,16 @@ def ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 def calculate_shipment_cost_and_arrival(date, shipment_type):
+    shipment_type = shipment_type.lower()
     arrival: datetime | None = datetime.today()
     cost = None
-    if shipment_type == 'Land':
+    if shipment_type == 'land':
         arrival = date + timedelta(days=5)
         cost = 10_000 * 5
-    elif shipment_type == 'Sea':
+    elif shipment_type == 'sea':
         arrival = date + timedelta(weeks=2)
         cost = 1_000 * 14
-    elif shipment_type == 'Air':
+    elif shipment_type == 'air':
         arrival = date + timedelta(days=2)
         cost = 100_000 * 2
     return arrival, cost
@@ -39,9 +45,6 @@ def formatted_maintenance_type(maintenance_type):
         return 'Deep clean'
     else:
         return 'Outside repairs'
-    
-ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
-ALLOWED_REPORT_EXTENSIONS = {'.pdf'}
     
 def generate_file_name(maintenance_id: int):
     date = datetime.now().strftime("%d%m%y%H%M%S")
