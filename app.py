@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, g, render_template
 from datetime import datetime
 import sqlite3
 import argparse
@@ -27,7 +27,7 @@ def get_db_objects():
 app = Flask(__name__)
 
 # File upload configuration
-app.config['UPLOAD_FOLDER'] = "./files"
+app.config['UPLOAD_FOLDER'] = "./static"
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 @app.route("/")
@@ -300,7 +300,7 @@ def get_maintenance_files(maintenance_id: int):
         SELECT file_name, file_type FROM report_file
         WHERE maintenance_id=?                
     """, (maintenance_id,))
-    files = cur.fetchmany()
+    files = cur.fetchall()
     
     formatted_files = [{
         'mainText': 'Image evidence' if file[1] == 'image' else 'Maintenance report',
