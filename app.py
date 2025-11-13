@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g
 from datetime import datetime
 import sqlite3
 import argparse
@@ -9,14 +9,17 @@ import waitress
 import seed # Seeds the database
 import utils # Includes several utility functions
 
+dev = False
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", "--dev", help="Run in Development mode", type=bool, action=argparse.BooleanOptionalAction)
 
 seed.init_db()
 
 def get_db_objects():
-    con = sqlite3.connect('containers.db')
-    return con, con.cursor()
+    if "db" not in g:
+        g.db = sqlite3.connect('containers.db')
+    return g.db, g.db.cursor()
 
 # con = sqlite3.connect('containers.db')
 # cur = con.cursor()
@@ -332,10 +335,28 @@ def upload_maintenance_image(maintenance_id: int):
     con.commit()
     return "", 201
 
+@app.teardown_appcontext
+def teardown(exception):
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
+@app.after_request
+def log_after_request(response):
+    if not dev:
+        now = datetime.now().strftime("%d/%b/%Y %H:%M:%S")
+        ip = request.remote_addr or "-"
+        method = request.method
+        path = request.full_path
+        status = response.status_code
+        print(f'{ip} - - [{now}] "{method} {path} HTTP/1.1" {status}')
+    return response
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
     if args.dev:
+        dev = True
         app.run(host='0.0.0.0', port=8080, debug=True)
     else:
         waitress.serve(app)
